@@ -1,0 +1,66 @@
+name: CI/CD to GKE
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ secrets.GCP_REGION }}
+      AR_REPO: ${{ secrets.AR_REPO }}
+      IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+      CLUSTER: ${{ secrets.GKE_CLUSTER }}
+      NAMESPACE: ${{ secrets.GKE_NAMESPACE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Autenticar a Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configurar Docker para autenticacion para Artifact Registry
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: build y push del hola mundo
+        run: |
+          IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${GITHUB_SHA}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
+
+          docker build -t "${IMAGE_URI}" ./app
+          docker push "${IMAGE_URI}"
+
+      - name: Obtener credentials de GKE
+        run: |
+          gcloud container clusters get-credentials "${CLUSTER}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}"
+
+      - name: Deploy (update a la imagen)
+        run: |
+          kubectl -n "${NAMESPACE}" set image deployment/hello hello="${IMAGE_URI}"
+          kubectl -n "${NAMESPACE}" rollout status deployment/hello --timeout=180s
+
+      - name: Escribir logs (bonus)
+        run: |
+          gcloud logging write "kambista_deploy_audit" \
+            "{\"repo\":\"${{ github.repository }}\",\"sha\":\"${{ github.sha }}\",\"actor\":\"${{ github.actor }}\",\"cluster\":\"${CLUSTER}\",\"namespace\":\"${NAMESPACE}\",\"image\":\"${IMAGE_URI}\"}" \
+            --severity=INFO

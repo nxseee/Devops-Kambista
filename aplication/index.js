@@ -1,29 +1,36 @@
-const http = require('http');
 
-const hostname = process.env.HOST || '0.0.0.0';
-const port = process.env.PORT || 3000;
+const express = require("express");
+const crypto = require("crypto");
 
-const server = http.createServer((req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('X-Powered-By', 'Node.js');
+const app = express();
+const port = process.env.PORT || 8080;
 
-  if (req.url === '/health') {
-    res.statusCode = 200;
-    return res.end(JSON.stringify({
-      status: 'OK',
-      uptime: process.uptime()
-    }));
-  }
-
-  res.statusCode = 200;
-  res.end(JSON.stringify({
-    message: 'Hola Mundo',
-    author: 'Andre Rivero',
-    stack: 'Node.js + Nginx',
-    deployment: 'Packer'
-  }));
+app.use((req, res, next) => {
+  const rid = req.header("x-request-id") || crypto.randomUUID();
+  res.setHeader("x-request-id", rid);
+  req.requestId = rid;
+  next();
 });
 
-server.listen(port, hostname, () => {
-  console.log(`Server running at http://${hostname}:${port}`);
+app.get("/", (req, res) => {
+  console.log(JSON.stringify({
+    severity: "INFO",
+    message: "Hola Mundo by Andre Rivero",
+    requestId: req.requestId,
+    path: req.path,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  }));
+  res.json({ ok: true, message: "Hello World", requestId: req.requestId });
+});
+
+app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+
+app.listen(port, () => {
+  console.log(JSON.stringify({
+    severity: "INFO",
+    message: "Service started",
+    port,
+    timestamp: new Date().toISOString()
+  }));
 });

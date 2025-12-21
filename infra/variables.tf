@@ -21,3 +21,13 @@ variable "artifact_repo_id" {
   type    = string
   default = "kambista-repo"
 }
+
+variable "image_name" {
+  type    = string
+  default = "hello-kambista"
+}
+
+variable "image_tag" {
+  type    = string
+  default = "v1"
+}

@@ -36,31 +36,47 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Configurar Docker para autenticacion para Artifact Registry
+      - name: Configurar Docker para autenticación a Artifact Registry
         run: |
+          set -euo pipefail
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-      - name: build y push del hola mundo
+      - name: Build y push del Hola Mundo
         run: |
+          set -euo pipefail
           IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${GITHUB_SHA}"
-          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+          echo "Usando IMAGE_URI=${IMAGE_URI}"
 
           docker build -t "${IMAGE_URI}" ./aplication
           docker push "${IMAGE_URI}"
 
-      - name: Obtener credentials de GKE
+      - name: Instalar kubectl
         run: |
-          gcloud container clusters get-credentials "${CLUSTER}" \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}"
+          set -euo pipefail
+          if ! command -v kubectl >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y kubectl
+          fi
+          kubectl version --client=true
+
+      - name: Obtener credenciales de GKE
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER }}
+          location: ${{ secrets.GCP_REGION }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Deploy (update a la imagen)
         run: |
+          set -euo pipefail
           kubectl -n "${NAMESPACE}" set image deployment/hello hello="${IMAGE_URI}"
           kubectl -n "${NAMESPACE}" rollout status deployment/hello --timeout=180s
+          kubectl -n "${NAMESPACE}" get pods -l app=hello -o wide
 
       - name: Escribir logs (bonus)
         run: |
+          set -euo pipefail
           gcloud logging write "kambista_deploy_audit" \
             "{\"repo\":\"${{ github.repository }}\",\"sha\":\"${{ github.sha }}\",\"actor\":\"${{ github.actor }}\",\"cluster\":\"${CLUSTER}\",\"namespace\":\"${NAMESPACE}\",\"image\":\"${IMAGE_URI}\"}" \
             --severity=INFO

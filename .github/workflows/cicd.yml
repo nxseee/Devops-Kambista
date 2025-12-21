@@ -45,7 +45,7 @@ jobs:
           IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${GITHUB_SHA}"
           echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
 
-          docker build -t "${IMAGE_URI}" ./app
+          docker build -t "${IMAGE_URI}" ./aplication
           docker push "${IMAGE_URI}"
 
       - name: Obtener credentials de GKE

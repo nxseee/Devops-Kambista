@@ -24,6 +24,43 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  
+
+      - name: Set Semgrep mode and baseline
+        id: semgrep_baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            BASELINE="${{ github.event.before }}"
+          else
+            BASE_BRANCH="main"
+            git fetch origin "$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH" --depth=50
+            BASELINE="$(git merge-base HEAD "origin/$BASE_BRANCH")"
+          fi
+
+          echo "baseline=$BASELINE" >> "$GITHUB_OUTPUT"
+          echo "scan_mode=diff" >> "$GITHUB_OUTPUT"
+          echo "Baseline usado: $BASELINE"
+
+      - name: Debug archivos cambiados
+        run: |
+          echo "BASELINE=${{ steps.semgrep_baseline.outputs.baseline }}"
+          git diff --name-only ${{ steps.semgrep_baseline.outputs.baseline }} HEAD    
+          
+      - name: Semgrep scan (diff-only)
+        if: steps.semgrep_baseline.outputs.scan_mode == 'diff'
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/security-audit
+        env:
+          SEMGREP_APP_TOKEN: ""
+          SEMGREP_SEND_METRICS: "off"
+          SEMGREP_BASELINE_COMMIT: ${{ steps.semgrep_baseline.outputs.baseline }}             
 
       - name: Autenticar a Google Cloud (WIF)
         uses: google-github-actions/auth@v2
